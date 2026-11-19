@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Дентал Ривер ассистент</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a clinic's day timeline is the hero: daylight hours covered by the front desk, night hours shaded, a live marker at "now".
+   The assistant chat sits beside it and is the thing that covers the night. Calm, clinical, one rounded family. Single deliberate light look. */
+:root{--bg:#F1F6F4;--white:#FFFFFF;--ink:#0D3536;--muted:#557072;--teal:#11968D;--teal-d:#0C756E;--mint:#D3EEE9;--night:#1A2A44;--night2:#2B3E5E;--line:#DCE7E4;
+  --f:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);font-size:16px;line-height:1.55}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+:focus-visible{outline:3px solid var(--teal);outline-offset:2px;border-radius:8px}
+.wrap{max-width:1140px;margin:0 auto;padding:40px max(20px,env(safe-area-inset-right,0px)) 60px max(20px,env(safe-area-inset-left,0px));display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:56px;align-items:start}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;color:var(--teal-d);margin-bottom:28px}
+.logo svg{width:28px;height:28px}
+h1{font-weight:700;font-size:clamp(34px,4.6vw,56px);line-height:1.04;letter-spacing:-.02em;margin:0 0 14px;max-width:15ch}
+.lead{color:var(--muted);font-size:18px;max-width:44ch;margin:0 0 30px}
+
+/* dial */
+
+/* day timeline */
+.day{max-width:560px;margin:8px 0 34px;padding-top:44px}
+.track{position:relative;height:58px;border-radius:16px;background:var(--night);overflow:visible}
+.seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:13px;font-weight:500;white-space:nowrap}
+.seg em{font-style:normal;padding:0 8px;overflow:hidden;text-overflow:ellipsis}
+.seg.night{background:var(--night);color:#C9D5EA}
+.seg.night:first-child{border-radius:16px 0 0 16px}.seg.night:nth-child(3){border-radius:0 16px 16px 0}
+.seg.dayseg{background:var(--mint);color:var(--teal-d)}
+.nowmark{font-style:normal;position:absolute;top:-10px;bottom:-10px;width:4px;margin-left:-2px;border-radius:2px;background:var(--teal);box-shadow:0 0 0 3px #fff;transition:left .8s cubic-bezier(.2,1.4,.4,1)}
+.nowmark b{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;font-size:15px;padding:5px 10px;border-radius:9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.nowmark b::before{content:"сейчас ";font-weight:400;opacity:.75}
+.nowmark.pulse b{animation:bounce .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes bounce{40%{transform:translateX(-50%) translateY(-6px)}}
+.hours{position:relative;height:22px;margin-top:6px;font-size:12px;color:var(--muted)}
+.hours span{position:absolute;transform:translateX(-50%)}
+.hours span:first-child{transform:none}.hours span:last-child{transform:translateX(-100%)}
+.who{margin:10px 0 0;font-weight:500}
+.seg .sm{display:none}@media (max-width:560px){.seg .lg{display:none}.seg .sm{display:inline}}
+.who.day{color:var(--teal-d)}.who.night{color:var(--night)}
+/* prices */
+.prices{background:var(--white);border-radius:16px;padding:6px 20px;max-width:560px}
+.prices button{display:flex;justify-content:space-between;gap:12px;width:100%;padding:14px 0;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums;transition:color .2s}
+.prices button:last-child{border:0}
+.prices button:hover{color:var(--teal-d)}
+.prices button b{font-weight:600;white-space:nowrap}
+.hint{font-size:14px;color:var(--muted);margin:12px 0 0}
+
+/* chat */
+.chat{position:sticky;top:20px;background:var(--white);border-radius:24px;overflow:hidden;display:flex;flex-direction:column;height:660px;box-shadow:0 40px 70px -40px rgba(13,53,54,.45)}
+.ch{background:var(--teal-d);color:#fff;padding:16px 18px;display:flex;gap:12px;align-items:center}
+.ch .av{width:40px;height:40px;border-radius:50%;background:#fff;color:var(--teal-d);display:grid;place-items:center;font-weight:700}
+.ch b{display:block}.ch small{opacity:.85}
+.ms{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;background:#F7FBFA}
+.m{max-width:88%;padding:11px 14px;border-radius:16px;font-size:15px;white-space:pre-line;animation:in .3s ease}
+.m.a{background:var(--white);align-self:flex-start;border-bottom-left-radius:5px;box-shadow:0 1px 0 var(--line)}
+.m.u{background:var(--teal);color:#fff;align-self:flex-end;border-bottom-right-radius:5px}
+@keyframes in{from{transform:translateY(8px);opacity:0}}
+.typing{display:flex;gap:4px;padding:14px}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:dot 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{30%{transform:translateY(-5px)}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 0;background:#F7FBFA}
+.chips button{border:1.5px solid var(--teal);color:var(--teal-d);border-radius:999px;padding:6px 12px;font-size:14px;transition:background .2s,color .2s}
+.chips button:hover{background:var(--teal);color:#fff}
+form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
+input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font:15px var(--f);color:var(--ink);background:#fff}
+input:focus{outline:none;border-color:var(--teal)}
+.chips button:active,.prices button:active{transform:scale(.97)}.chips button,.prices button,.send{transition:transform .3s cubic-bezier(.3,1.6,.5,1),background .2s,color .2s}.send:hover{transform:rotate(-14deg)}.send:active{transform:scale(.9)}
+html.lenis,html.lenis body{height:auto}.lenis.lenis-smooth{scroll-behavior:auto!important}
+.send{width:46px;border-radius:12px;background:var(--teal);color:#fff;display:grid;place-items:center}
+.send svg{width:20px;height:20px}
+footer{max-width:1140px;margin:0 auto;padding:0 max(20px,env(safe-area-inset-right,0px)) 90px max(20px,env(safe-area-inset-left,0px));color:var(--muted);font-size:14px}
+.wbr-badge{position:fixed;z-index:120;left:calc(14px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:center;font:600 12px/1 system-ui,-apple-system,sans-serif;color:#fff;background:rgba(10,12,18,.86);border-radius:999px;padding:8px 13px 8px 8px;text-decoration:none}
+.wbr-badge b{width:18px;height:18px;border-radius:6px;background:#3D6BFF;display:grid;place-items:center;font-size:10px;font-weight:800}
+@media (max-width:920px){.wrap{grid-template-columns:1fr}.chat{position:relative;top:0;height:600px}}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="logo"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 4c-4 0-6 3-6 7 0 5 2 7 3 12 .6 3 1.5 5 3 5s2-3 2.5-6c.3-2 1-3 2.5-3s2.2 1 2.5 3c.5 3 1 6 2.5 6s2.4-2 3-5c1-5 3-7 3-12 0-4-2-7-6-7-2.5 0-3.5 1.5-5 1.5S11.5 4 9 4z" fill="currentColor"/></svg>Дентал Ривер</div>
+    <h1>Администратор уходит в 21:00. Ассистент остаётся.</h1>
+    <p class="lead">Пациенты пишут вечером и ночью, когда клиника закрыта. Ассистент отвечает по прайсу клиники и оставляет заявку администратору на утро.</p>
+    <div class="day" aria-label="Кто отвечает пациентам в течение суток">
+      <div class="track">
+        <span class="seg night" style="left:0;width:37.5%"><em>ассистент</em></span>
+        <span class="seg dayseg" style="left:37.5%;width:50%"><em><span class="lg">администратор и ассистент</span><span class="sm">администратор</span></em></span>
+        <span class="seg night" style="left:87.5%;width:12.5%"></span>
+        <i class="nowmark" id="nowmark"><b id="clock">--:--</b></i>
+      </div>
+      <div class="hours"><span style="left:0">0</span><span style="left:25%">6</span><span style="left:37.5%">9</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:87.5%">21</span><span style="left:100%">24</span></div>
+      <p class="who" id="who"></p>
+    </div>
+    <div class="prices" id="prices" aria-label="Фрагмент прайса клиники">
+      <button type="button" data-q="Сколько стоит консультация?"><span>Консультация и план лечения</span><b>бесплатно</b></button>
+      <button type="button" data-q="Сколько стоит чистка?"><span>Профгигиена Air Flow</span><b>4 500 ₽</b></button>
+      <button type="button" data-q="Сколько стоит лечение кариеса?"><span>Лечение кариеса</span><b>от 5 900 ₽</b></button>
+      <button type="button" data-q="Цена импланта?"><span>Имплант под ключ</span><b>от 45 000 ₽</b></button>
+      <button type="button" data-q="Сколько стоит отбеливание?"><span>Отбеливание ZOOM</span><b>18 000 ₽</b></button>
+    </div>
+    <p class="hint">Нажмите на услугу, и ассистент ответит про неё в чате.</p>
+  </div>
+  <div class="chat">
+    <div class="ch"><div class="av">ДР</div><div><b>Ассистент клиники</b><small id="st">отвечает за секунды</small></div></div>
+    <div class="ms" id="ms" aria-live="polite" data-lenis-prevent></div>
+    <div class="chips" id="chips"></div>
+    <form id="f"><input id="q" placeholder="Например: сколько стоит чистка?" autocomplete="off" aria-label="Ваш вопрос"><button class="send" type="submit" aria-label="Отправить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg></button></form>
+  </div>
+</div>
+<footer>«Дентал Ривер» — вымышленная клиника, ответы ассистента написаны по сценарию. Демо-проект WBR Studio.</footer>
+<a class="wbr-badge" href="https://t.me/worldsbestreseller" target="_blank" rel="noopener"><b>W</b>Демо-проект WBR Studio</a>
+
+<script>
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=s=>document.querySelector(s);
+
+/* day timeline: where "now" sits between the front desk's hours and the night */
+(function(){function tick(){const d=new Date(),h=d.getHours()+d.getMinutes()/60;const m=$('#nowmark');m.style.left=(h/24*100)+'%';
+    $('#clock').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    const day=h>=9&&h<21,w=$('#who');w.className='who '+(day?'day':'night');w.textContent=day?'Сейчас отвечают администратор и ассистент.':'Клиника закрыта, пациентам отвечает ассистент.'}
+  tick();setInterval(tick,20000)})();
+function pulse(){const m=$('#nowmark');m.classList.remove('pulse');void m.offsetWidth;m.classList.add('pulse')}
+
+/* scripted assistant */
+/* clinic knowledge base: what the assistant can find by meaning, not by exact words */
+const KB=[
+ {n:'Консультация и план лечения',p:'бесплатно',k:['консультац','осмотр','план лечен','посмотреть зуб','проверить зуб'],i:'Врач осмотрит, при необходимости сделает снимок и распишет план со стоимостью.'},
+ {n:'Профгигиена Air Flow',p:'4 500 ₽',k:['чистк','почист','гигиен','air flow','эйр флоу','айр','налет','камен','камн'],i:'Около часа, ультразвук плюс Air Flow. Рекомендуем раз в полгода.'},
+ {n:'Лечение кариеса',p:'от 5 900 ₽',k:['кариес','дырк','пломб'],w:['лечение зуб','лечить зуб','лечение'],i:'Цена зависит от глубины, анестезия входит в стоимость.'},
+ {n:'Лечение каналов (пульпит)',p:'от 9 000 ₽',k:['канал','пульпит','нерв','депульп'],i:'Под микроскопом, обычно в один-два визита.'},
+ {n:'Удаление зуба',p:'от 3 500 ₽',k:['удалить зуб','удаление зуб','удалить зубы','удалить корень','вырв','выдер'],i:'Простое удаление от 3 500 ₽, сложное от 6 000 ₽.'},
+ {n:'Удаление зуба мудрости',p:'от 8 000 ₽',k:['мудрост','восьмерк'],i:'Точную цену хирург назовёт после снимка.'},
+ {n:'Имплант под ключ',p:'от 45 000 ₽',k:['имплант'],i:'Имплант, установка и коронка. Точная цена после КТ.'},
+ {n:'Коронка из диоксида циркония',p:'32 000 ₽',k:['коронк','циркон'],i:'Металлокерамика дешевле: 18 000 ₽.'},
+ {n:'Виниры',p:'от 25 000 ₽ за зуб',k:['винир','люминир'],i:'Керамические, срок изготовления около двух недель.'},
+ {n:'Отбеливание ZOOM',p:'18 000 ₽',k:['отбел','белые зуб','белее','zoom','зум'],i:'Одна процедура около 1,5 часа, до 8 тонов светлее. Вместе с профгигиеной 21 000 ₽.'},
+ {n:'Брекеты',p:'от 90 000 ₽',k:['брекет','кривые зуб','прикус','выровнять'],i:'Металлические или керамические, консультация ортодонта бесплатная.'},
+ {n:'Элайнеры',p:'от 150 000 ₽',k:['элайнер','капы для выравн','невидимые брекет'],i:'Прозрачные капы, курс обычно 8–18 месяцев.'},
+ {n:'Детский приём',p:'первый визит бесплатно',k:['дет','ребен','ребён','молочн','сын','доч'],i:'Принимаем с трёх лет, лечение молочного зуба от 3 500 ₽.'},
+ {n:'Снимок зуба',p:'500 ₽',k:['снимок','рентген','прицельн'],i:'Делаем прямо в кабинете, результат сразу.'},
+ {n:'КТ челюсти',p:'3 000 ₽',k:['кт','компьютерн','томограф'],i:'Нужна перед имплантацией и сложным удалением.'},
+ {n:'Протез съёмный',p:'от 35 000 ₽',k:['протез','съемн','съёмн'],i:'Подбираем после консультации ортопеда.'}];
+/* services a dental clinic does not provide */
+const NOT=[['стриж','постри','волос','окраш','укладк','барбер'],['маникюр','педикюр','ногт'],['массаж'],['косметолог','ботокс','филлер','чистка лица','пилинг'],['тату','пирсинг'],['эпиляц','депиляц'],['анализ кров','терапевт','гинеколог','окулист','офтальм','очки','линз'],['ремонт','такси','доставк']];
+const norm=t=>t.toLowerCase().replace(/ё/g,'е');
+function findServices(q){const t=norm(q);const strong=KB.map(x=>({x,s:x.k.filter(k=>t.includes(norm(k))).length})).filter(o=>o.s>0).sort((a,b)=>b.s-a.s).map(o=>o.x);
+  if(strong.length)return strong;
+  return KB.filter(x=>(x.w||[]).some(k=>t.includes(norm(k))))} // weak words like «лечение» count only when nothing specific matched
+function reply(q){const t=norm(q);
+  if(/\+?\d[\d\s\-()]{8,}/.test(q))return 'Спасибо! Передал заявку администратору, вам позвонят в рабочее время клиники.\n\nЭто демо: в настоящем проекте заявка уходит в Telegram и CRM клиники.';
+  if(/болит|болят|боль|ноет|острая|острый|флюс|опух|отек/.test(t)&&!NOT.some(g=>g.some(k=>t.includes(k))))return 'При острой боли примем вас первым, в 9:00. До приёма можно выпить обезболивающее, но щёку не грейте.\n\nНапишите имя и телефон, администратор позвонит.';
+  const off=NOT.find(g=>g.some(k=>t.includes(k)));
+  if(off&&!findServices(q).length)return 'Нет, этого мы не делаем: «Дентал Ривер» — стоматология. Могу подсказать цены на лечение, чистку, отбеливание или импланты и записать на приём.';
+  const f=findServices(q);
+  if(f.length===1)return `${f[0].n}: ${f[0].p}.\n${f[0].i}\n\nЗаписать вас?`;
+  if(f.length>1)return f.slice(0,4).map(x=>`• ${x.n}: ${x.p}`).join('\n')+'\n\nЗаписать на удобное время?';
+  if(/рассроч|кредит|оплат|карт|сбп/.test(t))return 'Оплата картой, наличными или по СБП. Для лечения от 30 000 ₽ есть рассрочка 0% на шесть месяцев.';
+  if(/адрес|где вы|наход|как добрат|парков|метро/.test(t))return 'Мы на ул. Речной, 15, в пяти минутах от метро. У входа бесплатная парковка.';
+  if(/во сколько|часы|режим|работаете|открыт|выходн|воскрес|суббот/.test(t))return 'Клиника работает каждый день с 9:00 до 21:00. Я отвечаю круглосуточно и могу записать вас прямо сейчас.';
+  if(/запис|прием|приём|хочу прийти|свободн/.test(t))return 'Записываю. Напишите имя, телефон и удобный день, администратор подтвердит запись звонком.';
+  if(/привет|здравств|добр|^да$|спасиб/.test(t))return 'Здравствуйте! Спросите о любой услуге, например «сколько стоит чистка» или «есть ли брекеты», и я отвечу по прайсу.';
+  if(/сколько|цен|стоит|прайс|стоимост/.test(t))return 'Не нашёл такой услуги в прайсе. Уточните, пожалуйста, что именно нужно, или запишу на бесплатную консультацию, где врач назовёт точную цену.';
+  return 'Точно ответит врач на бесплатной консультации. Оставьте имя и телефон, и я запишу вас.'}
+const ms=$('#ms'),st=$('#st');const wait=t=>new Promise(r=>setTimeout(r,RM?0:t));let busy=false;
+function add(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;ms.appendChild(d);ms.scrollTop=ms.scrollHeight;return d}
+async function stream(text){const ty=document.createElement('div');ty.className='m a typing';ty.innerHTML='<i></i><i></i><i></i>';ms.appendChild(ty);ms.scrollTop=ms.scrollHeight;st.textContent='печатает…';await wait(650);ty.remove();
+  const d=add('','a');if(RM)d.textContent=text;else for(let i=0;i<text.length;i+=3){d.textContent=text.slice(0,i+3);ms.scrollTop=ms.scrollHeight;await wait(12)}st.textContent='отвечает за секунды'}
+async function answer(q){if(busy)return;busy=true;add(q,'u');pulse();await stream(reply(q));busy=false}
+stream('Здравствуйте! Я ассистент клиники «Дентал Ривер». Подскажу цены, запишу на приём или отвечу на вопрос о лечении.');
+['Сколько стоит чистка зубов?','Можно у вас постричься?','Цена импланта и коронки','Есть рассрочка?'].forEach(t=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>answer(t);$('#chips').appendChild(b)});
+$('#f').addEventListener('submit',e=>{e.preventDefault();const i=$('#q');const v=i.value.trim();if(v){answer(v);i.value=''}});
+document.querySelectorAll('#prices button').forEach(b=>b.addEventListener('click',()=>answer(b.dataset.q)));
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<script>
+/* smooth inertial wheel scrolling on desktop; touch keeps native scrolling */
+(function(){if(!window.Lenis||matchMedia('(prefers-reduced-motion: reduce)').matches||!matchMedia('(pointer:fine)').matches)return;
+  const l=new Lenis({lerp:.1,smoothWheel:true});(function raf(t){l.raf(t);requestAnimationFrame(raf)})(0);
+  document.querySelectorAll('a[href^="#"]').forEach(a=>a.addEventListener('click',e=>{const id=a.getAttribute('href');if(id.length<2)return;const t=document.querySelector(id);if(t){e.preventDefault();l.scrollTo(t,{offset:-70})}}))})();
+</script>
+
+</html>
