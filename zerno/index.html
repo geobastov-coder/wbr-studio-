@@ -21,6 +21,7 @@ a{color:inherit}button{font:inherit;color:inherit;border:0;background:none;paddi
 .disp{font-family:var(--disp);font-weight:700;text-transform:uppercase;line-height:.86;letter-spacing:-.01em}
 .small{font:500 11px/1.55 var(--mono);text-transform:uppercase;letter-spacing:.06em}
 #gl{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2;pointer-events:none}
+#seqsh{position:fixed;left:0;top:0;width:400px;height:90px;z-index:2;pointer-events:none;transform-origin:0 0;will-change:transform;border-radius:50%;background:radial-gradient(closest-side,rgba(42,20,11,.42),rgba(42,20,11,.18) 55%,rgba(42,20,11,0))}
 #seqjar{position:fixed;left:0;top:0;width:1000px;height:1000px;z-index:2;pointer-events:none;will-change:transform;transform-origin:50% 50%;contain:strict}
 #story .sticky,.hero-in{position:relative;z-index:3}#story .sticky{position:sticky}
 .leaf{background-color:var(--orange);background-image:var(--pat-o);background-size:420px}
@@ -179,7 +180,7 @@ footer{position:relative;overflow:hidden;padding-top:70px;padding-bottom:calc(30
 </style>
 
 <canvas id="gl"></canvas>
-<canvas id="seqjar" width="640" height="640" aria-hidden="true"></canvas>
+<div id="seqsh" aria-hidden="true"></div><canvas id="seqjar" width="640" height="640" aria-hidden="true"></canvas>
 
 <nav class="pad">
   <div class="npill"><a href="#hero">Магазин</a><a href="#recipes">Рецепты</a><a href="#trad">О нас</a><a href="#news">Скидка</a></div>
@@ -401,19 +402,27 @@ const K=[ // g, x(vw), y(vh), h(vh), rx, ry, rz
 const KP=[[0,.5,.6,.5,0,-15,0],[1,.5,.6,.5,0,-15,0]];
 function kf(g,T){let i=0;while(i<T.length-2&&g>T[i+1][0])i++;const a=T[i],b=T[i+1],t=eio(clamp((g-a[0])/(b[0]-a[0])));const ph=phone&&T===K;return {x:(ph?lerp(.5,lerp(a[1],b[1],t),.4):lerp(a[1],b[1],t))*vw,y:lerp(a[2],b[2],t)*vh,h:lerp(a[3],b[3],t)*vh*(ph?.62:1),rx:lerp(a[4],b[4],t),ry:lerp(a[5],b[5],t),rz:lerp(a[6],b[6],t)}}
 let jar,cur=null;
-/* photoreal tumble: 48 Blender frames, picked by scroll progress */
-const SEQN=95,SEQ_SIDE=3.6/2.55,seqImg=document.getElementById('seqjar'),FR=[];let SEQ=true,seqShown=-1;
-const seqX=seqImg.getContext('2d');const ready=im=>im.complete&&im.naturalWidth>0;
-for(let i=0;i<SEQN;i++){const im=new Image();im.decoding='async';im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{im.ok=true;if(i===seqShown||seqShown<0)seqShown=-2})};im.src='seq/'+(i%2?'m'+String((i-1)/2).padStart(2,'0'):'f'+String(i/2).padStart(2,'0'))+'.webp';FR.push(im)}
-FR[0].onerror=()=>{SEQ=false;seqImg.hidden=true;if(GL&&!jar){jar=makeJar();scene.add(jar)}};
-// canvas + pre-decoded frames: a frame change is one drawImage, movement is a pure compositor transform (no layout, no filter re-raster)
-let seqVis=null,seqT='';
-function placeSeq(c,visible){if(visible!==seqVis){seqVis=visible;seqImg.style.visibility=visible?'visible':'hidden'}if(!visible)return;
-  let i=Math.round(clamp(c.g)*(SEQN-1));
-  if(!FR[i].ok){for(let d=1;d<SEQN;d++){if(FR[i-d]&&FR[i-d].ok){i-=d;break}if(FR[i+d]&&FR[i+d].ok){i+=d;break}}}
-  if(i!==seqShown&&FR[i].ok){seqShown=i;seqX.clearRect(0,0,640,640);seqX.shadowColor='rgba(42,20,11,.38)';seqX.shadowBlur=34;seqX.shadowOffsetY=30;seqX.drawImage(FR[i],40,20,560,560)}
-  const side=c.h*SEQ_SIDE*640/560,t=`translate3d(${(c.x-500).toFixed(1)}px,${(c.y-500+side*20/640).toFixed(1)}px,0) rotate(${c.rz.toFixed(2)}deg) scale(${(side/1000).toFixed(4)})`;
-  if(t!==seqT){seqT=t;seqImg.style.transform=t}}
+/* photoreal tumble: 192 Blender frames picked by scroll progress, neighbours blended so the turn reads as continuous motion */
+const SEQN=192,SEQ_SIDE=3.6/2.55,seqImg=document.getElementById('seqjar'),FR=new Array(SEQN);let SEQ=true;
+const SEQ_DIR=innerWidth<820?'seq/m/':'seq/d/',FS=innerWidth<820?720:960,CS=Math.round(FS*8/7),PADX=(CS-FS)/2,PADY=Math.round((CS-FS)*.25);
+seqImg.width=seqImg.height=CS;const seqX=seqImg.getContext('2d');
+let drawnKey=-1;
+function loadFrame(i){if(FR[i])return;const im=new Image();im.decoding='async';FR[i]=im;
+  im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{im.ok=true;drawnKey=-1})};
+  if(i===0)im.onerror=()=>{SEQ=false;seqImg.hidden=true;if(GL&&!jar){jar=makeJar();scene.add(jar)}};
+  im.src=SEQ_DIR+'h'+String(i).padStart(3,'0')+'.webp'}
+// coarse to fine: every 16th frame first so the jar is there at once, then the gaps fill in
+[16,8,4,2,1].forEach(st=>{for(let i=0;i<SEQN;i+=st)loadFrame(i)});loadFrame(SEQN-1);
+function nearest(i){if(FR[i]&&FR[i].ok)return i;for(let d=1;d<SEQN;d++){if(FR[i-d]&&FR[i-d].ok)return i-d;if(FR[i+d]&&FR[i+d].ok)return i+d}return -1}
+let seqVis=null,seqT='';const seqSh=document.getElementById('seqsh');
+function placeSeq(c,visible){if(visible!==seqVis){seqVis=visible;seqImg.style.visibility=seqSh.style.visibility=visible?'visible':'hidden'}if(!visible)return;
+  const p=clamp(c.g)*(SEQN-1),i=Math.floor(p);let t=p-i;const a=nearest(i),b=(a===i&&FR[i+1]&&FR[i+1].ok)?i+1:-1;if(b<0)t=0;
+  const key=a*64+Math.round(t*40);
+  // two drawImage calls per change, no canvas shadow (a blurred shadow re-rasterised every frame was the expensive part)
+  if(a>=0&&key!==drawnKey){drawnKey=key;seqX.clearRect(0,0,CS,CS);seqX.drawImage(FR[a],PADX,PADY,FS,FS);if(t>.02){seqX.globalAlpha=t;seqX.drawImage(FR[b],PADX,PADY,FS,FS);seqX.globalAlpha=1}}
+  const side=c.h*SEQ_SIDE*CS/FS,tr=`translate3d(${(c.x-500).toFixed(1)}px,${(c.y-500+side*(CS/2-PADY-FS/2)/CS).toFixed(1)}px,0) rotate(${c.rz.toFixed(2)}deg) scale(${(side/1000).toFixed(4)})`;
+  if(tr!==seqT){seqT=tr;seqImg.style.transform=tr;
+    const sw=side*.62;seqSh.style.transform=`translate3d(${(c.x-sw/2).toFixed(1)}px,${(c.y+side*.36).toFixed(1)}px,0) scale(${(sw/400).toFixed(4)},${(sw/400).toFixed(4)})`}}
 function placeJar(s){const sc=s.h/JH;jar.position.set(s.x-vw/2,glH/2-s.y,0);jar.scale.setScalar(sc);const d=Math.PI/180;jar.rotation.set(s.rx*d,s.ry*d,-s.rz*d)}
 const story=$('#story'),hero=$('#hero'),panel=$('#panel'),inside=$('#inside'),magicEl=$('#magic'),bigJarEl=$('#bigjar');
 const hls=[...document.querySelectorAll('.hl,.side')],dots=[...document.querySelectorAll('#prog i')];
@@ -435,10 +444,12 @@ function frame(now){requestAnimationFrame(frame);
   if(p2>0){const pr=prR,idle=RM?0:Math.sin(now/1800)*6,spin=RM?0:Math.sin(now/3200)*12;
     const P={x:pr.left+pr.width/2,y:pr.top+pr.height/2+idle,h:Math.min(pr.height*.92,pr.width*1.5),rx:0,ry:360+spin,rz:-6,g:1};
     const t=eio(p2);for(const k in s)s[k]=lerp(s[k],P[k],t)}
-  const sdt=Math.min(64,now-(frame.t||now));frame.t=now;const ka=1-Math.exp(-sdt/95);  // frame-rate independent easing: same feel at 60 and 120 Hz
+  const sdt=Math.min(64,now-(frame.t||now));frame.t=now;const ka=1-Math.exp(-sdt/165);  // frame-rate independent easing: same feel at 60 and 120 Hz
   if(!cur||RM)cur={...s};else for(const k in s)cur[k]=lerp(cur[k],s[k],ka);
   const visible=cur.y-cur.h/2<vh+40&&cur.y+cur.h/2>-40;
-  if(SEQ){placeSeq(cur,visible);return}
+  // gentle hover so the jar floats even between scroll gestures (transform only, no frame redraw)
+  const fl=RM?0:1-p2,d={...cur,y:cur.y+Math.sin(now/1500)*cur.h*.014*fl,rz:cur.rz+Math.sin(now/2300+1)*1.6*fl};
+  if(SEQ){placeSeq(d,visible);return}
   jar.visible=visible;placeJar(cur);if(visible||drewLast){renderer.render(scene,camera);drewLast=visible}
   const dt=now-(perf.last||now);perf.last=now;perf.n++;perf.t+=dt;if(perf.n>=90){const avg=perf.t/perf.n;perf.n=perf.t=0;if(avg>24&&renderer.getPixelRatio()>1){dprCap=Math.max(1,renderer.getPixelRatio()-.25);size()}}}
 let drewLast=true;const perf={n:0,t:0,last:0};
