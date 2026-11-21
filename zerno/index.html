@@ -407,19 +407,25 @@ const SEQN=192,SEQ_SIDE=3.6/2.55,seqImg=document.getElementById('seqjar'),FR=new
 const SEQ_DIR=innerWidth<820?'seq/m/':'seq/d/',FS=innerWidth<820?720:960,CS=Math.round(FS*8/7),PADX=(CS-FS)/2,PADY=Math.round((CS-FS)*.25);
 seqImg.width=seqImg.height=CS;const seqX=seqImg.getContext('2d');
 let drawnKey=-1;
-function loadFrame(i){if(FR[i])return;const im=new Image();im.decoding='async';FR[i]=im;
-  im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{im.ok=true;drawnKey=-1})};
-  if(i===0)im.onerror=()=>{SEQ=false;seqImg.hidden=true;if(GL&&!jar){jar=makeJar();scene.add(jar)}};
-  im.src=SEQ_DIR+'h'+String(i).padStart(3,'0')+'.webp'}
+// lag-free playback: frames stay as compressed blobs; only ~20 around the playhead are decoded (off the main thread), far ones are released
+const BLOB=new Array(SEQN),BM=new Map(),PEND=new Set();let seqDir=1,seqPrev=0;
+function loadFrame(i){if(BLOB[i]!==undefined)return;BLOB[i]=null;
+  fetch(SEQ_DIR+'h'+String(i).padStart(3,'0')+'.webp').then(r=>{if(!r.ok)throw 0;return r.blob()}).then(b=>{BLOB[i]=b;if(Math.abs(i-seqPrev*(SEQN-1))<20)decodeF(i)})
+   .catch(()=>{if(i===0){SEQ=false;seqImg.hidden=true;if(GL&&!jar){jar=makeJar();scene.add(jar)}}})}
+function decodeF(i){if(i<0||i>=SEQN||BM.has(i)||PEND.has(i)||!BLOB[i])return;PEND.add(i);
+  createImageBitmap(BLOB[i]).then(bm=>{PEND.delete(i);BM.set(i,bm);drawnKey=-1}).catch(()=>PEND.delete(i))}
+function seqWindow(f){const c=Math.round(f);for(let d=0;d<=14;d++){decodeF(c+d*seqDir);if(d<=5)decodeF(c-d*seqDir)}
+  if(BM.size>26)BM.forEach((bm,i)=>{if(Math.abs(i-c)>18){bm.close&&bm.close();BM.delete(i)}})}
 // coarse to fine: every 16th frame first so the jar is there at once, then the gaps fill in
 [16,8,4,2,1].forEach(st=>{for(let i=0;i<SEQN;i+=st)loadFrame(i)});loadFrame(SEQN-1);
-function nearest(i){if(FR[i]&&FR[i].ok)return i;for(let d=1;d<SEQN;d++){if(FR[i-d]&&FR[i-d].ok)return i-d;if(FR[i+d]&&FR[i+d].ok)return i+d}return -1}
+function nearest(i){if(BM.has(i))return i;for(let d=1;d<SEQN;d++){if(BM.has(i-d))return i-d;if(BM.has(i+d))return i+d}return -1}
 let seqVis=null,seqT='';const seqSh=document.getElementById('seqsh');
 function placeSeq(c,visible){if(visible!==seqVis){seqVis=visible;seqImg.style.visibility=seqSh.style.visibility=visible?'visible':'hidden'}if(!visible)return;
-  const p=clamp(c.g)*(SEQN-1),i=Math.floor(p);let t=p-i;const a=nearest(i),b=(a===i&&FR[i+1]&&FR[i+1].ok)?i+1:-1;if(b<0)t=0;
+  const p=clamp(c.g)*(SEQN-1),i=Math.floor(p);if(Math.abs(p-seqPrev*(SEQN-1))>.01)seqDir=p>seqPrev*(SEQN-1)?1:-1;seqPrev=p/(SEQN-1);seqWindow(p);
+  let t=p-i;const a=nearest(i),b=(a===i&&BM.has(i+1))?i+1:-1;if(b<0)t=0;
   const key=a*64+Math.round(t*40);
   // two drawImage calls per change, no canvas shadow (a blurred shadow re-rasterised every frame was the expensive part)
-  if(a>=0&&key!==drawnKey){drawnKey=key;seqX.clearRect(0,0,CS,CS);seqX.drawImage(FR[a],PADX,PADY,FS,FS);if(t>.02){seqX.globalAlpha=t;seqX.drawImage(FR[b],PADX,PADY,FS,FS);seqX.globalAlpha=1}}
+  if(a>=0&&key!==drawnKey){drawnKey=key;seqX.clearRect(0,0,CS,CS);seqX.drawImage(BM.get(a),PADX,PADY,FS,FS);if(t>.02){seqX.globalAlpha=t;seqX.drawImage(BM.get(b),PADX,PADY,FS,FS);seqX.globalAlpha=1}}
   const side=c.h*SEQ_SIDE*CS/FS,tr=`translate3d(${(c.x-500).toFixed(1)}px,${(c.y-500+side*(CS/2-PADY-FS/2)/CS).toFixed(1)}px,0) rotate(${c.rz.toFixed(2)}deg) scale(${(side/1000).toFixed(4)})`;
   if(tr!==seqT){seqT=tr;seqImg.style.transform=tr;
     const sw=side*.62;seqSh.style.transform=`translate3d(${(c.x-sw/2).toFixed(1)}px,${(c.y+side*.36).toFixed(1)}px,0) scale(${(sw/400).toFixed(4)},${(sw/400).toFixed(4)})`}}

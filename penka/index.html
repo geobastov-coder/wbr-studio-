@@ -297,16 +297,22 @@ const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),lerp=(a,b,t)=>a+(b-a)*t,ease=
 const NF=72,url=(f,i)=>`cups/${f}/${String(i).padStart(2,'0')}.webp`;
 
 /* ---------- frames ---------- */
-const FR=F.map(()=>({im:[],p:null,n:0}));
+// lag-free playback: every frame is kept as a small compressed blob; each canvas decodes only the ~21 frames around
+// its current angle, off the main thread and already resized to that canvas, and releases the rest.
+const FR=F.map(()=>({b:[],p:null,n:0}));
 function load(f){const s=FR[f];if(s.p)return s.p;
-  s.p=Promise.all(Array.from({length:NF},(_,i)=>new Promise(res=>{const im=new Image();im.decoding='async';s.im[i]=im;
-    im.onload=()=>{s.n++;(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(res);dirty()};im.onerror=res;im.src=url(f,i)})));return s.p}
-const ok=im=>im&&im.complete&&im.naturalWidth>0;
-function view(cv){const x=cv.getContext('2d');let w=0,h=0;
-  return{size(){const r=cv.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,innerWidth<820?2:1.75),W=Math.round(r.width*d),H=Math.round(r.height*d);if(W&&(W!==w||H!==h)){w=cv.width=W;h=cv.height=H}},
-    draw(f,deg,alpha=1){if(!w)this.size();x.clearRect(0,0,w,h);const s=FR[f].im,p=((deg/360*NF)%NF+NF)%NF;let i=Math.round(p)%NF,j=i,t=0;
-      let A=s[i],B=s[j];if(!ok(A)){A=null;B=null;for(let k=1;k<NF/2&&!A;k++){if(ok(s[(i+k)%NF]))A=s[(i+k)%NF];else if(ok(s[(i-k+NF)%NF]))A=s[(i-k+NF)%NF]}}
-      if(!A)return false;x.globalAlpha=alpha;x.drawImage(A,0,0,w,h);if(ok(B)&&t>.02){x.globalAlpha=alpha*t;x.drawImage(B,0,0,w,h)}x.globalAlpha=1;return true}}}
+  s.p=Promise.all(Array.from({length:NF},(_,i)=>fetch(url(f,i)).then(r=>r.ok?r.blob():null).then(bl=>{s.b[i]=bl;if(bl)s.n++;dirty()}).catch(()=>{})));return s.p}
+function view(cv){const x=cv.getContext('2d');let w=0,h=0,gen=0,lastF=-1,dir=1,prevP=0;const BM=new Map(),PEND=new Set();
+  const release=()=>{BM.forEach(b=>b.close&&b.close());BM.clear();PEND.clear();gen++};
+  function dec(f,i){i=(i%NF+NF)%NF;const k=f*NF+i,bl=FR[f].b[i];if(BM.has(k)||PEND.has(k)||!bl||!w)return;PEND.add(k);const g=gen;
+    createImageBitmap(bl,{resizeWidth:w,resizeHeight:h,resizeQuality:'high'}).then(bm=>{PEND.delete(k);if(g!==gen){bm.close&&bm.close();return}BM.set(k,bm);dirty()}).catch(()=>PEND.delete(k))}
+  return{size(){const r=cv.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,innerWidth<820?2:1.5),W=Math.round(r.width*d),H=Math.round(r.height*d);if(W&&(W!==w||H!==h)){w=cv.width=W;h=cv.height=H;release()}},
+    draw(f,deg,alpha=1){if(!w)this.size();if(f!==lastF){if(lastF>=0)release();lastF=f}
+      const p=((deg/360*NF)%NF+NF)%NF,i=Math.round(p)%NF;let dp=p-prevP;if(dp>NF/2)dp-=NF;if(dp<-NF/2)dp+=NF;if(Math.abs(dp)>.01)dir=dp>0?1:-1;prevP=p;
+      for(let d=0;d<=14;d++){dec(f,i+d*dir);if(d<=6)dec(f,i-d*dir)}
+      if(BM.size>26)BM.forEach((bm,k)=>{const j=k%NF;let dd=Math.abs(j-i);dd=Math.min(dd,NF-dd);if(Math.floor(k/NF)!==f||dd>16){bm.close&&bm.close();BM.delete(k)}});
+      let A=BM.get(f*NF+i);if(!A)for(let k=1;k<NF/2&&!A;k++)A=BM.get(f*NF+(i+k)%NF)||BM.get(f*NF+(i-k+NF)%NF);
+      if(!A)return false;x.clearRect(0,0,w,h);x.globalAlpha=alpha;x.drawImage(A,0,0);x.globalAlpha=1;return true}}}
 
 /* ---------- state ---------- */
 let cur=2,cart={},setSlots=[null,null,null],vw=innerWidth,needs=true;
@@ -378,7 +384,7 @@ function buildCards(){cards.innerHTML=F.map((D,i)=>`<article class="card" style=
   if(matchMedia('(pointer:fine)').matches)cards.querySelectorAll('.card').forEach(c=>{const i=+c.dataset.i,img=c.querySelector('.cup img');let raf=0;
     c.addEventListener('pointerenter',()=>load(i));
     c.addEventListener('pointermove',e=>{const r=c.getBoundingClientRect(),k=((e.clientX-r.left)/r.width-.5)*2;const fr=((Math.round(k*14)%NF)+NF)%NF;
-      if(ok(FR[i].im[fr])&&img.dataset.fr!=fr){img.dataset.fr=fr;img.src=FR[i].im[fr].src}});
+      if(FR[i].b[fr]&&img.dataset.fr!=fr){img.dataset.fr=fr;img.src=url(i,fr)}});
     c.addEventListener('pointerleave',()=>{img.dataset.fr=0;img.src=url(i,0)})})}
 function syncCards(){cards.querySelectorAll('.card').forEach(c=>{c.querySelector('.ctl').innerHTML=ctl(+c.dataset.i)})}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-d]');if(!b)return;const i=+b.dataset.i,d=+b.dataset.d;
