@@ -540,24 +540,35 @@ document.querySelectorAll('.split').forEach(h=>{const walk=n=>{[...n.childNodes]
   run()})();
 
 
-/* film: 180 Blender frames picked by scroll progress, neighbours blended, progress eased so motion glides */
+/* film: 140 Blender frames picked by scroll progress.
+   Lag-free design: every frame is kept only as a small compressed blob; just the ~24 frames around the playhead are decoded,
+   off the main thread (createImageBitmap) and already resized to the canvas, so drawing is a plain blit. Far frames are released. */
 (function(){
-  const film=document.getElementById('film'),cv=document.getElementById('filmc'),x=cv.getContext('2d'),fx=[...film.querySelectorAll('.fx')],hint=document.getElementById('fhint');
-  const N=180,portrait=innerWidth/innerHeight<.9,DIR=portrait?'film/m/':'film/d/',FR=new Array(N);let key=-1,W=0,H=0,sp=0,last=0;
-  function load(i){if(FR[i])return;const im=new Image();im.decoding='async';FR[i]=im;im.onload=()=>{(im.decode?im.decode():Promise.resolve()).catch(()=>{}).then(()=>{im.ok=true;key=-1})};im.src=DIR+'c'+String(i).padStart(3,'0')+'.webp'}
-  // frames load only when the visitor gets close to the film, so the first screen stays instant
-  let started=false;const start=()=>{if(started)return;started=true;[20,10,5,2,1].forEach(st=>{for(let i=0;i<N;i+=st)load(i)});load(N-1)};
+  const film=document.getElementById('film'),cv=document.getElementById('filmc'),x=cv.getContext('2d',{alpha:false}),fx=[...film.querySelectorAll('.fx')],hint=document.getElementById('fhint');
+  const N=140,DIR=innerWidth/innerHeight<.9?'film/m/':'film/d/',BLOB=new Array(N),BM=new Map(),PEND=new Set();
+  let W=0,H=0,gen=0,sp=0,last=0,key=-1,dirn=1,prevF=0,stage=-1,started=false,NW=0,NH=0;
+  const url=i=>DIR+'c'+String(i).padStart(3,'0')+'.webp';
+  function fetchFrame(i){if(BLOB[i]!==undefined)return;BLOB[i]=null;fetch(url(i)).then(r=>r.ok?r.blob():null).then(b=>{BLOB[i]=b;if(b&&!NW)probe(b)}).catch(()=>{})}
+  function probe(b){createImageBitmap(b).then(bm=>{NW=bm.width;NH=bm.height;bm.close&&bm.close();size(true)})}
+  function start(){if(started)return;started=true;[20,10,5,2,1].forEach(st=>{for(let i=0;i<N;i+=st)fetchFrame(i)});fetchFrame(N-1)}
   new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))start()},{rootMargin:'150% 0px'}).observe(film);
-  function near(i){if(FR[i]&&FR[i].ok)return i;for(let d=1;d<N;d++){if(FR[i-d]&&FR[i-d].ok)return i-d;if(FR[i+d]&&FR[i+d].ok)return i+d}return -1}
-  function size(){const d=Math.min(devicePixelRatio||1,1.5),w=Math.round(cv.clientWidth*d),h=Math.round(cv.clientHeight*d);if(w!==W||h!==H){W=cv.width=w;H=cv.height=h;key=-1}}
-  addEventListener('resize',size);size();
-  function cover(im,a){const s=Math.max(W/im.naturalWidth,H/im.naturalHeight),w=im.naturalWidth*s,h=im.naturalHeight*s;x.globalAlpha=a;x.drawImage(im,(W-w)/2,(H-h)/2,w,h)}
-  let stage=-1;
+  let dw=0,dh=0,ox=0,oy=0;
+  function size(force){const d=Math.min(devicePixelRatio||1,innerWidth<820?2:1.5),w=Math.round(cv.clientWidth*d),h=Math.round(cv.clientHeight*d);
+    if(!force&&w===W&&h===H)return;W=cv.width=w;H=cv.height=h;if(NW){const s=Math.max(W/NW,H/NH);dw=Math.round(NW*s);dh=Math.round(NH*s);ox=Math.round((W-dw)/2);oy=Math.round((H-dh)/2)}
+    gen++;BM.forEach(b=>b.close&&b.close());BM.clear();PEND.clear();key=-1}
+  addEventListener('resize',()=>size());
+  function decode(i){if(i<0||i>=N||BM.has(i)||PEND.has(i)||!BLOB[i]||!dw)return;PEND.add(i);const g=gen;
+    createImageBitmap(BLOB[i],{resizeWidth:dw,resizeHeight:dh,resizeQuality:'high'}).then(bm=>{PEND.delete(i);if(g!==gen){bm.close&&bm.close();return}BM.set(i,bm);key=-1}).catch(()=>PEND.delete(i))}
+  function keepWindow(f){const c=Math.round(f),lo=c-(dirn<0?16:6),hi=c+(dirn>0?16:6);
+    for(let d=0;d<=16;d++){decode(c+d*dirn);if(d<=6)decode(c-d*dirn)}
+    if(BM.size>30)BM.forEach((b,i)=>{if(i<lo-2||i>hi+2){b.close&&b.close();BM.delete(i)}})}
+  function near(i){if(BM.has(i))return i;for(let d=1;d<N;d++){if(BM.has(i-d))return i-d;if(BM.has(i+d))return i+d}return -1}
   function tick(now){requestAnimationFrame(tick);const r=film.getBoundingClientRect();if(r.bottom<0||r.top>innerHeight){last=now;return}
-    const p=Math.min(1,Math.max(0,-r.top/(r.height-innerHeight))),dt=Math.min(64,now-(last||now));last=now;
+    if(!W)size();const p=Math.min(1,Math.max(0,-r.top/(r.height-innerHeight))),dt=Math.min(64,now-(last||now));last=now;
     sp+=(p-sp)*(RM?1:1-Math.exp(-dt/180));if(Math.abs(p-sp)<1e-4)sp=p;
-    const f=sp*(N-1),i=Math.floor(f);let t=f-i;const a=near(i),b=(a===i&&FR[i+1]&&FR[i+1].ok)?i+1:-1;if(b<0)t=0;
-    const k=a*64+Math.round(t*40);if(a>=0&&k!==key){key=k;cover(FR[a],1);if(t>.02)cover(FR[b],t);x.globalAlpha=1}
+    const f=sp*(N-1);if(Math.abs(f-prevF)>.01)dirn=f>prevF?1:-1;prevF=f;keepWindow(f);
+    const i=Math.floor(f);let t=f-i;const a=near(i),b=(a===i&&BM.has(i+1))?i+1:-1;if(b<0)t=0;
+    const k=a*64+Math.round(t*32);if(a>=0&&k!==key){key=k;x.globalAlpha=1;x.drawImage(BM.get(a),ox,oy);if(t>.03){x.globalAlpha=t;x.drawImage(BM.get(b),ox,oy);x.globalAlpha=1}}
     const s=sp<.17?0:sp<.28?-1:sp<.6?1:sp<.66?-1:sp<.82?2:sp<.87?-1:3;
     if(s!==stage){stage=s;fx.forEach((el,j)=>el.classList.toggle('on',j===s))}
     hint.classList.toggle('gone',sp>.03)}
